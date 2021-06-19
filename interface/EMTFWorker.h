@@ -7,14 +7,21 @@
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 
 #include "L1Trigger/Phase2L1EMTF/interface/Common.h"
-#include "L1Trigger/Phase2L1EMTF/interface/EMTFContext.h"
 
 namespace emtf {
 
   namespace phase2 {
 
+    class EMTFContext;
+    class EMTFModel;
+    class GeometryHelper;
+    class ConditionHelper;
+    class SectorProcessor;
+
     class EMTFWorker {
     public:
+      friend class SectorProcessor;  // allow access to helper objects
+
       explicit EMTFWorker(const edm::ParameterSet& iConfig, edm::ConsumesCollector&& iConsumes);
       ~EMTFWorker();
 
@@ -24,6 +31,31 @@ namespace emtf {
 
     private:
       const edm::ParameterSet& pset_;
+
+      // Helper objects
+      std::unique_ptr<EMTFModel> model_;
+      std::unique_ptr<GeometryHelper> geom_helper_;
+      std::unique_ptr<ConditionHelper> cond_helper_;
+
+      // Subsystem tokens
+      const edm::EDGetToken cscToken_;
+      const edm::EDGetToken rpcToken_;
+      const edm::EDGetToken gemToken_;
+      const edm::EDGetToken me0Token_;
+
+      // Subsystem enables
+      const bool cscEnable_;
+      const bool rpcEnable_;
+      const bool gemEnable_;
+      const bool me0Enable_;
+
+      // BX window
+      const int minBX_;
+      const int maxBX_;
+      const int bxWindow_;
+
+      // Verbosity level
+      int verbose_;
     };
 
   }  // namespace phase2
