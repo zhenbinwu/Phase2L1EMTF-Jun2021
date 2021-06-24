@@ -15,4 +15,23 @@
 // Mark a variable to avoid compiler error about unused variables
 #define emtf_maybe_unused(param) ((void)(param))
 
+// _____________________________________________________________________________
+// The following macro is used in SectorProcessor
+
+// Uncomment the following line to dump debugging info
+//#define EMTF_DUMP_INFO
+
+// _____________________________________________________________________________
+// The following macros are used in SegmentFormatter
+
+// getQuartStripBit() is not yet available in 11_1_7
+// getEighthStripBit() is not yet available in 11_1_7
+#define EMTF_USE_CSC_HALFSTRIP
+
+// getSlope() is not yet available in 11_1_7
+#define EMTF_USE_CSC_RUN2_BEND
+
+// GE2/1 NumberPartition is 8 in 11_1_7
+#define EMTF_USE_GEM_NPARTSGE21_8
+
 #endif  // L1Trigger_Phase2L1EMTF_Defines_h not defined

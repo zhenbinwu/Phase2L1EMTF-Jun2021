@@ -58,4 +58,13 @@ void EMTFWorker::process(const edm::Event& iEvent, EMTFHitCollection& out_hits, 
   if (me0Enable_) {
     collector.collect<me0_subsystem_tag>(iEvent, me0Token_, muon_primitives);
   }
+
+  // Run the sector processors
+  for (int endcap = MIN_ENDCAP; endcap <= MAX_ENDCAP; ++endcap) {
+    for (int sector = MIN_TRIGSECTOR; sector <= MAX_TRIGSECTOR; ++sector) {
+      SectorProcessor processor;
+      const edm::EventID& evt_id = iEvent.id();
+      processor.process(*this, endcap, sector, evt_id, muon_primitives, out_hits, out_tracks);
+    }
+  }
 }
