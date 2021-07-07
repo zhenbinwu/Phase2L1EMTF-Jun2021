@@ -14,6 +14,7 @@
 #include "L1Trigger/Phase2L1EMTF/interface/GeometryHelper.h"
 #include "L1Trigger/Phase2L1EMTF/interface/ConditionHelper.h"
 #include "L1Trigger/Phase2L1EMTF/interface/SegmentFormatter.h"
+#include "L1Trigger/Phase2L1EMTF/interface/SegmentPrinter.h"
 
 using namespace emtf::phase2;
 
@@ -219,4 +220,42 @@ void SectorProcessor::process_step_2(const EMTFWorker& iWorker,
 void SectorProcessor::dump_input_output(const edm::EventID& evt_id,
                                         const SubsystemCollection& muon_primitives,
                                         const EMTFHitCollection& out_hits,
-                                        const EMTFTrackCollection& out_tracks) const {}
+                                        const EMTFTrackCollection& out_tracks) const {
+  const std::string bold_seq = "\033[1m";
+  const std::string reset_seq = "\033[0m";
+
+  std::cout << "Processing " << evt_id << std::endl;
+  std::cout << "[" << bold_seq << "RX" << reset_seq << "]" << std::endl;
+
+  SegmentPrinter printer;
+
+  // Loop over muon_primitives
+  for (const auto& [a, b, c] : muon_primitives) {
+    // clang-format off
+    std::visit([&](auto&& subsystem, auto&& detid, auto&& digi) {
+      using T1 = std::decay_t<decltype(subsystem)>;
+      using T2 = std::decay_t<decltype(detid)>;
+      using T3 = std::decay_t<decltype(digi)>;
+      // Enable if (subsystem, detid, digi) are consistent
+      if constexpr (std::is_same_v<typename T1::detid_type, T2> and std::is_same_v<typename T1::digi_type, T3>) {
+        printer.print(detid, digi);
+      }           // end constexpr if statement
+    }, a, b, c);  // end visit
+    // clang-format on
+
+  }  // end loop
+
+  std::cout << "[" << bold_seq << "TX#0" << reset_seq << "]" << std::endl;
+
+  // Loop over converted EMTF hits
+  for (auto&& hit : out_hits) {
+    printer.print(hit);
+  }  // end loop
+
+  std::cout << "[" << bold_seq << "TX#1" << reset_seq << "]" << std::endl;
+
+  // Loop over EMTF tracks
+  for (auto&& trk : out_tracks) {
+    printer.print(trk);
+  }  // end loop
+}

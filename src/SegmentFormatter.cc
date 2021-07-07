@@ -560,7 +560,194 @@ void SegmentFormatter::format_impl(int endcap,
                                    const rpc_subsystem_tag::detid_type& detid,
                                    const rpc_subsystem_tag::digi_type& digi,
                                    const ChamberInfo& chminfo,
-                                   EMTFHit& hit) const {}
+                                   EMTFHit& hit) const {
+  static const int subsystem = L1TMuon::kRPC;
+  static const int clus_width_cut = 4;
+  static const int clus_width_cut_irpc = 6;
+
+  const int endcap_pm = (endcap == 2) ? -1 : endcap;  // using endcap [-1,+1] convention
+
+  // Extract from detid
+  int tp_region = detid.region();  // 0: barrel, +/-1: endcap
+  int tp_endcap = (tp_region == -1) ? 2 : tp_region;
+  // RPC sector is rotated by -20 deg relative to CSC sector.
+  // RPC sector 1 starts at -5 deg, CSC sector 1 starts at 15 deg.
+  int tp_sector_rpc = detid.sector();
+  // RPC subsector is defined differently than CSC subsector.
+  // RPC subsector is used to label the chamber within a sector.
+  int tp_subsector_rpc = detid.subsector();
+  int tp_station = detid.station();
+  int tp_ring = detid.ring();
+  int tp_roll = detid.roll();
+  int tp_layer = detid.layer();
+
+  // Extract from digi
+  int tp_bx = digi.BunchX();
+  int tp_clus_width = digi.clusterSize();  // strip_hi - strip_lo + 1
+  emtf_assert(tp_clus_width >= 1);
+  int tp_strip_lo = digi.firstClusterStrip();
+  int tp_strip_hi = tp_strip_lo + tp_clus_width - 1;
+  int tp_strip = (tp_strip_lo + tp_strip_hi) / 2;
+  float tp_time_f32 = digi.time();
+  float tp_subbx_f32 = tp_time_f32 - (std::round(tp_time_f32 / 25.) * 25.);  // reduce range to [-12.5,12.5] ns
+  int tp_subbx = static_cast<int>(std::round(tp_subbx_f32 * 16. / 25.));
+  tp_subbx = std::clamp(tp_subbx, -8, 7);  // 4-bit, signed
+  int tp_bx_check = static_cast<int>(std::round(tp_time_f32 / 25.));
+  // Not sure why sometimes digi.time() returns 0?
+  emtf_assert(((not(std::abs(tp_time_f32) < 1e-6)) and (tp_bx == tp_bx_check)) or (std::abs(tp_time_f32) < 1e-6));
+  emtf_maybe_unused(tp_bx_check);
+  bool tp_valid = true;  // not applicable
+
+  // Identifier for barrel RPC
+  const bool is_barrel = (tp_region == 0);
+
+  // Identifier for iRPC (RE3/1, RE4/1)
+  const bool is_irpc = ((not is_barrel) and (tp_station >= 3) and (tp_ring == 1));
+
+  // Reject RPCb and RPCf-in-overlap-region (RE1/3, RE2/3)
+  if (is_barrel or ((tp_station <= 2) and (tp_ring == 3))) {
+    tp_valid = false;
+  }
+
+  // Reject wide clusters
+  if (not is_irpc) {
+    if (tp_clus_width > clus_width_cut) {  // RPC
+      tp_valid = false;
+    }
+  } else {
+    if (tp_clus_width > clus_width_cut_irpc) {  // iRPC
+      tp_valid = false;
+    }
+  }
+
+  // If strategy is 0, reject ring 3 (RE3/3, RE4/3); otherwise, accept ring 3
+  // (ring 3 gets a lower priority than ring 2)
+  if (strategy == 0) {
+    if (tp_ring == 3) {
+      tp_valid = false;
+    }
+  }
+
+  // Rejected
+  if (not tp_valid)
+    return;
+
+  // Extract from detid (cont.)
+  int tp_chamber = ((tp_sector_rpc - 1) * (is_irpc ? 3 : 6)) + tp_subsector_rpc;
+  int tp_sector = toolbox::get_trigger_sector(tp_ring, tp_station, tp_chamber);
+  int tp_cscid = toolbox::get_trigger_cscid(tp_ring, tp_station, tp_chamber);
+  int tp_subsector = toolbox::get_trigger_subsector(tp_station, tp_chamber);
+
+  // Extract from digi (cont.)
+  int tp_bend = 0;  // not applicable
+  // Use cluster width as quality. RPC strip pitch is 1.5 times the iRPC strip pitch.
+  int tp_quality = (tp_clus_width * 3) / 2;
+  if (is_irpc) {
+    tp_quality = tp_clus_width;
+  }
+  int tp_cscfr = toolbox::get_trigger_cscfr(tp_ring, tp_station, tp_chamber);
+
+  // Guard against unexpected data
+  // It is sufficient to do this in only one sector
+  if ((endcap == 1) and (sector == 1) and (bx == 0)) {
+    emtf_assert((MIN_ENDCAP <= tp_endcap) and (tp_endcap <= MAX_ENDCAP));
+    emtf_assert((MIN_TRIGSECTOR <= tp_sector) and (tp_sector <= MAX_TRIGSECTOR));
+    emtf_assert((0 <= tp_subsector) and (tp_subsector <= 2));
+    emtf_assert((1 <= tp_station) and (tp_station <= 4));
+    emtf_assert((1 <= tp_ring) and (tp_ring <= 3));
+    emtf_assert((1 <= tp_chamber) and (tp_chamber <= 36));
+    emtf_assert((1 <= tp_cscid) and (tp_cscid <= 9));
+    emtf_assert(((not is_irpc) and ((1 <= tp_strip) and (tp_strip <= 32))) or
+                (is_irpc and ((1 <= tp_strip) and (tp_strip <= 96))));
+    emtf_assert(((not is_irpc) and ((1 <= tp_roll) and (tp_roll <= 3))) or
+                (is_irpc and ((1 <= tp_roll) and (tp_roll <= 5))));
+    emtf_assert(tp_valid == true);
+  }
+
+  // Assign chamber and segment numbers
+  int emtf_chamber = kInvalid;
+  int emtf_segment = kInvalid;
+
+  auto is_in_bx_fn = is_in_bx_0{bx};
+  auto is_in_sector_fn = is_in_sector{endcap, sector};
+  auto is_in_neighbor_sector_fn = is_in_neighbor_sector{endcap, sector};
+
+  const bool is_timely = is_in_bx_fn(tp_bx);
+  const bool is_native = is_in_sector_fn(tp_endcap, tp_sector);
+  const bool is_neighbor = is_in_neighbor_sector_fn(tp_endcap, tp_sector, tp_subsector, tp_station, tp_cscid);
+
+  if (is_timely and (is_native or is_neighbor)) {
+    emtf_chamber = find_emtf_chamber{}(subsystem, tp_subsector, tp_station, tp_cscid, is_neighbor);
+  }
+
+  // Does not belong to this sector
+  if (emtf_chamber == kInvalid)
+    return;
+
+  // Get global coordinates and convert them
+  const GlobalPoint& gp = get_global_point(detgeom, detid, digi);
+  const float glob_phi = toolbox::rad_to_deg(gp.phi().value());
+  const float glob_theta = toolbox::rad_to_deg(gp.theta().value());
+  const float glob_time = digi.time();
+  const int ph = toolbox::calc_phi_loc_int(glob_phi, sector);
+  const int th = toolbox::calc_theta_int(glob_theta, endcap_pm);
+  emtf_assert((0 <= ph) and (ph < 5040));
+  emtf_assert((1 <= th) and (th < 128));
+
+  // Find EMTF variables
+  const int emtf_phi = find_emtf_phi{}(subsystem, ph);
+  const int emtf_bend = find_emtf_bend{}(subsystem, tp_bend);
+  const int emtf_theta = find_emtf_theta{}(subsystem, th);
+  const int emtf_qual = find_emtf_qual{}(subsystem, tp_quality);
+  const int emtf_time = find_emtf_time{}(subsystem, tp_bx, tp_subbx);
+  const int emtf_site = find_emtf_site{}(subsystem, tp_station, tp_ring);
+  const int emtf_host = find_emtf_host{}(subsystem, tp_station, tp_ring);
+  const int seg_zones = find_seg_zones{}(emtf_host, emtf_theta);
+  const int seg_timezones = find_seg_timezones{}(emtf_host, tp_bx);
+
+  // Set all the variables
+  hit.setRawDetId(detid.rawId());
+  hit.setSubsystem(subsystem);
+  hit.setEndcap(endcap_pm);
+  hit.setSector(sector);
+  hit.setSubsector(tp_subsector);
+  hit.setStation(tp_station);
+  hit.setRing(tp_ring);
+  hit.setChamber(tp_chamber);
+  hit.setCscid(tp_cscid);
+  hit.setStrip(tp_strip);
+  hit.setStripLo(tp_strip_lo);
+  hit.setStripHi(tp_strip_hi);
+  hit.setWire1(tp_roll);
+  hit.setWire2(0);
+  hit.setBend(tp_bend);
+  hit.setQuality(tp_quality);
+  hit.setPattern(0);
+  hit.setNeighbor(is_neighbor);
+  hit.setZones(seg_zones);
+  hit.setTimezones(seg_timezones);
+  hit.setCscfr(tp_cscfr);
+  hit.setGemdl(tp_layer);
+  hit.setSubbx(tp_subbx);
+  hit.setBx(tp_bx);
+  hit.setEmtfChamber(emtf_chamber);
+  hit.setEmtfSegment(emtf_segment);
+  hit.setEmtfPhi(emtf_phi);
+  hit.setEmtfBend(emtf_bend);
+  hit.setEmtfTheta1(emtf_theta);
+  hit.setEmtfTheta2(0);
+  hit.setEmtfQual1(emtf_qual);
+  hit.setEmtfQual2(0);
+  hit.setEmtfTime(emtf_time);
+  hit.setEmtfSite(emtf_site);
+  hit.setEmtfHost(emtf_host);
+  hit.setGlobPhi(glob_phi);
+  hit.setGlobTheta(glob_theta);
+  hit.setGlobPerp(gp.perp());
+  hit.setGlobZ(gp.z());
+  hit.setGlobTime(glob_time);
+  hit.setValid(tp_valid);
+}
 
 void SegmentFormatter::format_impl(int endcap,
                                    int sector,
@@ -570,7 +757,171 @@ void SegmentFormatter::format_impl(int endcap,
                                    const gem_subsystem_tag::detid_type& detid,
                                    const gem_subsystem_tag::digi_type& digi,
                                    const ChamberInfo& chminfo,
-                                   EMTFHit& hit) const {}
+                                   EMTFHit& hit) const {
+  static const int subsystem = L1TMuon::kGEM;
+  static const int max_delta_roll = 1;
+  static const int max_delta_pad_ge11 = 4;
+  static const int max_delta_pad_ge21 = 4;
+
+  const int endcap_pm = (endcap == 2) ? -1 : endcap;  // using endcap [-1,+1] convention
+
+  // Extract from detid
+  int tp_region = detid.region();  // 0: barrel, +/-1: endcap
+  int tp_endcap = (tp_region == -1) ? 2 : tp_region;
+  int tp_station = detid.station();
+  int tp_ring = detid.ring();
+  int tp_chamber = detid.chamber();
+  int tp_roll = detid.roll();
+  int tp_layer = detid.layer();
+
+  // Extract from digi
+  int tp_bx = digi.bx();
+  int tp_pad_lo = digi.pads().front();
+  int tp_pad_hi = digi.pads().back();
+  int tp_pad = (tp_pad_lo + tp_pad_hi) / 2;
+  bool tp_valid = digi.isValid();
+
+  // Identifier for GE2/1
+  const bool is_ge21 = (tp_station == 2);
+
+  // Reject if do not find coincidence
+  if (tp_valid and (tp_layer == 1)) {  // layer 1 is used as incidence
+    auto match_fn = [&tp_roll, &tp_pad_lo, &tp_pad_hi, &is_ge21](const ChamberInfo::copad_vec_t::value_type& elem) {
+      // Compare roll and (pad_lo, pad_hi)-range with tolerance
+      const auto& [c_roll_tmp, c_pad_lo_tmp, c_pad_hi_tmp] = elem;
+      int c_roll_lo = static_cast<int>(c_roll_tmp) - max_delta_roll;
+      int c_roll_hi = static_cast<int>(c_roll_tmp) + max_delta_roll;
+      int c_pad_lo = static_cast<int>(c_pad_lo_tmp) - (is_ge21 ? max_delta_pad_ge21 : max_delta_pad_ge11);
+      int c_pad_hi = static_cast<int>(c_pad_hi_tmp) + (is_ge21 ? max_delta_pad_ge21 : max_delta_pad_ge11);
+      // Two ranges overlap if (range_a_lo <= range_b_hi) and (range_a_hi >= range_b_lo)
+      return (tp_roll <= c_roll_hi) and (tp_roll >= c_roll_lo) and (tp_pad_lo <= c_pad_hi) and (tp_pad_hi >= c_pad_lo);
+    };
+    auto found = std::find_if(chminfo.copad_vec.begin(), chminfo.copad_vec.end(), match_fn);
+    bool has_copad = (found != chminfo.copad_vec.end());
+    bool kindof_has_copad = ((found != chminfo.copad_vec.end()) or chminfo.copad_vec.empty());
+    tp_valid = (strategy == 0) ? has_copad : kindof_has_copad;
+  } else if (tp_valid and (tp_layer == 2)) {  // layer 2 is used as coincidence
+    tp_valid = false;
+  }
+
+  // Rejected
+  if (not tp_valid)
+    return;
+
+  // Extract from detid (cont.)
+  int tp_sector = toolbox::get_trigger_sector(tp_ring, tp_station, tp_chamber);
+  int tp_cscid = toolbox::get_trigger_cscid(tp_ring, tp_station, tp_chamber);
+  int tp_subsector = toolbox::get_trigger_subsector(tp_station, tp_chamber);
+
+  // Extract from digi (cont.)
+  int tp_bend = 0;  // not applicable
+  // Use cluster width as quality. GE2/1 strip pitch is the same as GE1/1 strip pitch.
+  int tp_quality = tp_pad_hi - tp_pad_lo + 1;
+  int tp_cscfr = toolbox::get_trigger_cscfr(tp_ring, tp_station, tp_chamber);
+  int tp_subbx = 0;  // no fine resolution timing
+
+  // Guard against unexpected data
+  // It is sufficient to do this in only one sector
+  if ((endcap == 1) and (sector == 1) and (bx == 0)) {
+    emtf_assert((MIN_ENDCAP <= tp_endcap) and (tp_endcap <= MAX_ENDCAP));
+    emtf_assert((MIN_TRIGSECTOR <= tp_sector) and (tp_sector <= MAX_TRIGSECTOR));
+    emtf_assert((0 <= tp_subsector) and (tp_subsector <= 2));
+    emtf_assert((1 <= tp_station) and (tp_station <= 2));
+    emtf_assert(tp_ring == 1);
+    emtf_assert((1 <= tp_chamber) and (tp_chamber <= 36));
+    emtf_assert((1 <= tp_cscid) and (tp_cscid <= 3));
+    emtf_assert(((not is_ge21) and ((0 <= tp_pad) and (tp_pad < 192))) or
+                (is_ge21 and ((0 <= tp_pad) and (tp_pad < 384))));
+    emtf_assert(((not is_ge21) and ((1 <= tp_roll) and (tp_roll <= 8))) or
+                (is_ge21 and ((1 <= tp_roll) and (tp_roll <= 8))));
+    emtf_assert(tp_valid == true);
+  }
+
+  // Assign chamber and segment numbers
+  int emtf_chamber = kInvalid;
+  int emtf_segment = kInvalid;
+
+  auto is_in_bx_fn = is_in_bx_0{bx};
+  auto is_kindof_in_bx_fn = is_in_bx_0_m1{bx};
+  auto is_in_sector_fn = is_in_sector{endcap, sector};
+  auto is_in_neighbor_sector_fn = is_in_neighbor_sector{endcap, sector};
+
+  const bool is_timely = (strategy == 0) ? is_in_bx_fn(tp_bx) : is_kindof_in_bx_fn(tp_bx);
+  const bool is_native = is_in_sector_fn(tp_endcap, tp_sector);
+  const bool is_neighbor = is_in_neighbor_sector_fn(tp_endcap, tp_sector, tp_subsector, tp_station, tp_cscid);
+
+  if (is_timely and (is_native or is_neighbor)) {
+    emtf_chamber = find_emtf_chamber{}(subsystem, tp_subsector, tp_station, tp_cscid, is_neighbor);
+  }
+
+  // Does not belong to this sector
+  if (emtf_chamber == kInvalid)
+    return;
+
+  // Get global coordinates and convert them
+  const GlobalPoint& gp = get_global_point(detgeom, detid, digi);
+  const float glob_phi = toolbox::rad_to_deg(gp.phi().value());
+  const float glob_theta = toolbox::rad_to_deg(gp.theta().value());
+  const float glob_time = 0.;  // no fine resolution timing
+  const int ph = toolbox::calc_phi_loc_int(glob_phi, sector);
+  const int th = toolbox::calc_theta_int(glob_theta, endcap_pm);
+  emtf_assert((0 <= ph) and (ph < 5040));
+  emtf_assert((1 <= th) and (th < 128));
+
+  // Find EMTF variables
+  const int emtf_phi = find_emtf_phi{}(subsystem, ph);
+  const int emtf_bend = find_emtf_bend{}(subsystem, tp_bend);
+  const int emtf_theta = find_emtf_theta{}(subsystem, th);
+  const int emtf_qual = find_emtf_qual{}(subsystem, tp_quality);
+  const int emtf_time = find_emtf_time{}(subsystem, tp_bx, tp_subbx);
+  const int emtf_site = find_emtf_site{}(subsystem, tp_station, tp_ring);
+  const int emtf_host = find_emtf_host{}(subsystem, tp_station, tp_ring);
+  const int seg_zones = find_seg_zones{}(emtf_host, emtf_theta);
+  const int seg_timezones = find_seg_timezones{}(emtf_host, tp_bx);
+
+  // Set all the variables
+  hit.setRawDetId(detid.rawId());
+  hit.setSubsystem(subsystem);
+  hit.setEndcap(endcap_pm);
+  hit.setSector(sector);
+  hit.setSubsector(tp_subsector);
+  hit.setStation(tp_station);
+  hit.setRing(tp_ring);
+  hit.setChamber(tp_chamber);
+  hit.setCscid(tp_cscid);
+  hit.setStrip(tp_pad);
+  hit.setStripLo(tp_pad_lo);
+  hit.setStripHi(tp_pad_hi);
+  hit.setWire1(tp_roll);
+  hit.setWire2(0);
+  hit.setBend(tp_bend);
+  hit.setQuality(tp_quality);
+  hit.setPattern(0);
+  hit.setNeighbor(is_neighbor);
+  hit.setZones(seg_zones);
+  hit.setTimezones(seg_timezones);
+  hit.setCscfr(tp_cscfr);
+  hit.setGemdl(tp_layer);
+  hit.setSubbx(tp_subbx);
+  hit.setBx(tp_bx);
+  hit.setEmtfChamber(emtf_chamber);
+  hit.setEmtfSegment(emtf_segment);
+  hit.setEmtfPhi(emtf_phi);
+  hit.setEmtfBend(emtf_bend);
+  hit.setEmtfTheta1(emtf_theta);
+  hit.setEmtfTheta2(0);
+  hit.setEmtfQual1(emtf_qual);
+  hit.setEmtfQual2(0);
+  hit.setEmtfTime(emtf_time);
+  hit.setEmtfSite(emtf_site);
+  hit.setEmtfHost(emtf_host);
+  hit.setGlobPhi(glob_phi);
+  hit.setGlobTheta(glob_theta);
+  hit.setGlobPerp(gp.perp());
+  hit.setGlobZ(gp.z());
+  hit.setGlobTime(glob_time);
+  hit.setValid(tp_valid);
+}
 
 void SegmentFormatter::format_impl(int endcap,
                                    int sector,
@@ -580,7 +931,176 @@ void SegmentFormatter::format_impl(int endcap,
                                    const me0_subsystem_tag::detid_type& detid,
                                    const me0_subsystem_tag::digi_type& digi,
                                    const ChamberInfo& chminfo,
-                                   EMTFHit& hit) const {}
+                                   EMTFHit& hit) const {
+  static const int subsystem = L1TMuon::kME0;
+  static const int me0_bx_shift = -CSCConstants::LCT_CENTRAL_BX;
+  static const int me0_max_partition = 9;  // limited to eta of 2.4
+  static const int me0_nstrips = 384;
+  static const int me0_nphipositions = me0_nstrips * 2;
+
+  const int endcap_pm = (endcap == 2) ? -1 : endcap;  // using endcap [-1,+1] convention
+
+  // Extract from detid
+  int tp_region = detid.region();  // 0: barrel, +/-1: endcap
+  int tp_endcap = (tp_region == -1) ? 2 : tp_region;
+  int tp_station = detid.station();
+  int tp_ring = 4;
+  int tp_chamber_me0 = detid.chamber();
+  //int tp_roll = detid.roll();  // unused
+  int tp_layer = detid.layer();
+
+  // Extract from digi
+  int tp_bx = static_cast<int>(digi.getBX()) + me0_bx_shift;
+  int tp_phiposition = digi.getPhiposition();  // in half-strip unit
+  int tp_partition = digi.getPartition();      // in half-roll unit
+  int tp_bend = static_cast<int>(digi.getDeltaphi()) * (static_cast<int>(digi.getBend()) * 2 - 1);
+  int tp_quality = digi.getQuality();
+  bool tp_valid = digi.isValid();
+
+  // Split 20-deg chamber into 10-deg chamber
+  // ME0 chamber is rotated by -5 deg relative to CSC chamber.
+  // ME0 chamber 1 starts at -10 deg, CSC chamber 1 starts at -5 deg.
+  int tp_chamber = (tp_chamber_me0 - 1) * 2 + 1;
+  {
+    // First quarter of ME0 chamber (5 deg) and last quarter
+    const int phiposition_q1 = me0_nphipositions / 4;
+    const int phiposition_q3 = (me0_nphipositions / 4) * 3;
+    if (tp_endcap == 1) {  // positive endcap
+      if (tp_phiposition < phiposition_q1) {
+        tp_chamber = toolbox::next_csc_chamber_10deg(tp_chamber);
+      } else if (tp_phiposition < phiposition_q3) {
+        // Do nothing
+      } else {
+        tp_chamber = toolbox::prev_csc_chamber_10deg(tp_chamber);
+      }
+    } else {  // negative endcap
+      if (tp_phiposition < phiposition_q1) {
+        tp_chamber = toolbox::prev_csc_chamber_10deg(tp_chamber);
+      } else if (tp_phiposition < phiposition_q3) {
+        // Do nothing
+      } else {
+        tp_chamber = toolbox::next_csc_chamber_10deg(tp_chamber);
+      }
+    }
+  }
+
+  // Reject if outside eta of 2.4
+  if (tp_partition > me0_max_partition) {
+    tp_valid = false;
+  }
+
+  // Rejected
+  if (not tp_valid)
+    return;
+
+  // Extract from detid (cont.)
+  int tp_sector = toolbox::get_trigger_sector(tp_ring, tp_station, tp_chamber);
+  int tp_cscid = toolbox::get_trigger_cscid(tp_ring, tp_station, tp_chamber);
+  int tp_subsector = toolbox::get_trigger_subsector(tp_station, tp_chamber);
+
+  // Extract from digi (cont.)
+  int tp_cscfr = toolbox::get_trigger_cscfr(tp_ring, tp_station, tp_chamber);
+  int tp_subbx = 0;  // no fine resolution timing
+
+  // Guard against unexpected data
+  // It is sufficient to do this in only one sector
+  if ((endcap == 1) and (sector == 1) and (bx == 0)) {
+    emtf_assert((MIN_ENDCAP <= tp_endcap) and (tp_endcap <= MAX_ENDCAP));
+    emtf_assert((MIN_TRIGSECTOR <= tp_sector) and (tp_sector <= MAX_TRIGSECTOR));
+    emtf_assert((1 <= tp_subsector) and (tp_subsector <= 2));
+    emtf_assert(tp_station == 1);
+    emtf_assert(tp_ring == 4);
+    emtf_assert((1 <= tp_chamber) and (tp_chamber <= 36));
+    emtf_assert((1 <= tp_cscid) and (tp_cscid <= 3));
+    emtf_assert((0 <= tp_phiposition) and (tp_phiposition < 768));
+    emtf_assert((0 <= tp_partition) and (tp_partition < 16));
+    emtf_assert(tp_valid == true);
+  }
+
+  // Assign chamber and segment numbers
+  int emtf_chamber = kInvalid;
+  int emtf_segment = kInvalid;
+
+  auto is_in_bx_fn = is_in_bx_0{bx};
+  auto is_in_sector_fn = is_in_sector{endcap, sector};
+  auto is_in_neighbor_sector_fn = is_in_neighbor_sector{endcap, sector};
+
+  const bool is_timely = is_in_bx_fn(tp_bx);
+  const bool is_native = is_in_sector_fn(tp_endcap, tp_sector);
+  const bool is_neighbor = is_in_neighbor_sector_fn(tp_endcap, tp_sector, tp_subsector, tp_station, tp_cscid);
+
+  if (is_timely and (is_native or is_neighbor)) {
+    emtf_chamber = find_emtf_chamber{}(subsystem, tp_subsector, tp_station, tp_cscid, is_neighbor);
+  }
+
+  // Does not belong to this sector
+  if (emtf_chamber == kInvalid)
+    return;
+
+  // Get global coordinates and convert them
+  const GlobalPoint& gp = get_global_point(detgeom, detid, digi);
+  const float glob_phi = toolbox::rad_to_deg(gp.phi().value());
+  const float glob_theta = toolbox::rad_to_deg(gp.theta().value());
+  const float glob_time = 0.;  // no fine resolution timing
+  const int ph = toolbox::calc_phi_loc_int(glob_phi, sector);
+  const int th = toolbox::calc_theta_int(glob_theta, endcap_pm);
+  emtf_assert((0 <= ph) and (ph < 5040));
+  emtf_assert((1 <= th) and (th < 128));
+
+  // Find EMTF variables
+  const int emtf_phi = find_emtf_phi{}(subsystem, ph);
+  const int emtf_bend = find_emtf_bend{}(subsystem, tp_bend);
+  const int emtf_theta = find_emtf_theta{}(subsystem, th);
+  const int emtf_qual = find_emtf_qual{}(subsystem, tp_quality);
+  const int emtf_time = find_emtf_time{}(subsystem, tp_bx, tp_subbx);
+  const int emtf_site = find_emtf_site{}(subsystem, tp_station, tp_ring);
+  const int emtf_host = find_emtf_host{}(subsystem, tp_station, tp_ring);
+  const int seg_zones = find_seg_zones{}(emtf_host, emtf_theta);
+  const int seg_timezones = find_seg_timezones{}(emtf_host, tp_bx);
+
+  // Set all the variables
+  hit.setRawDetId(detid.rawId());
+  hit.setSubsystem(subsystem);
+  hit.setEndcap(endcap_pm);
+  hit.setSector(sector);
+  hit.setSubsector(tp_subsector);
+  hit.setStation(tp_station);
+  hit.setRing(tp_ring);
+  hit.setChamber(tp_chamber);
+  hit.setCscid(tp_cscid);
+  hit.setStrip(tp_phiposition);
+  hit.setStripLo(tp_phiposition);
+  hit.setStripHi(tp_phiposition);
+  hit.setWire1(tp_partition);
+  hit.setWire2(0);
+  hit.setBend(tp_bend);
+  hit.setQuality(tp_quality);
+  hit.setPattern(0);
+  hit.setNeighbor(is_neighbor);
+  hit.setZones(seg_zones);
+  hit.setTimezones(seg_timezones);
+  hit.setCscfr(tp_cscfr);
+  hit.setGemdl(tp_layer);
+  hit.setSubbx(tp_subbx);
+  hit.setBx(tp_bx);
+  hit.setEmtfChamber(emtf_chamber);
+  hit.setEmtfSegment(emtf_segment);
+  hit.setEmtfPhi(emtf_phi);
+  hit.setEmtfBend(emtf_bend);
+  hit.setEmtfTheta1(emtf_theta);
+  hit.setEmtfTheta2(0);
+  hit.setEmtfQual1(emtf_qual);
+  hit.setEmtfQual2(0);
+  hit.setEmtfTime(emtf_time);
+  hit.setEmtfSite(emtf_site);
+  hit.setEmtfHost(emtf_host);
+  hit.setGlobPhi(glob_phi);
+  hit.setGlobTheta(glob_theta);
+  hit.setGlobPerp(gp.perp());
+  hit.setGlobZ(gp.z());
+  hit.setGlobTime(glob_time);
+  hit.setValid(tp_valid);
+}
 
 // _____________________________________________________________________________
 GlobalPoint SegmentFormatter::get_global_point(const CSCGeometry& detgeom,
