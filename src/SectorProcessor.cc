@@ -11,10 +11,12 @@
 #include <vector>
 
 #include "L1Trigger/Phase2L1EMTF/interface/EMTFWorker.h"
+#include "L1Trigger/Phase2L1EMTF/interface/EMTFModel.h"
 #include "L1Trigger/Phase2L1EMTF/interface/GeometryHelper.h"
 #include "L1Trigger/Phase2L1EMTF/interface/ConditionHelper.h"
 #include "L1Trigger/Phase2L1EMTF/interface/SegmentFormatter.h"
 #include "L1Trigger/Phase2L1EMTF/interface/SegmentPrinter.h"
+#include "L1Trigger/Phase2L1EMTF/interface/TrackFormatter.h"
 
 using namespace emtf::phase2;
 
@@ -215,7 +217,90 @@ void SectorProcessor::process_step_2(const EMTFWorker& iWorker,
                                      int sector,
                                      int bx,
                                      const EMTFHitCollection& sector_hits,
-                                     EMTFTrackCollection& sector_tracks) const {}
+                                     EMTFTrackCollection& sector_tracks) const {
+  // Exit early if sector is empty
+  bool early_exit = sector_hits.empty();
+
+  if (early_exit)
+    return;
+
+  const NdArrayDesc& input_shape = iWorker.model_->get_input_shape();
+  const NdArrayDesc& output_shape = iWorker.model_->get_output_shape();
+  const unsigned num_segments = iWorker.model_->get_num_segments();
+  const unsigned num_tracks = iWorker.model_->get_num_tracks();
+
+  // Model input and output
+  std::vector<int> in0(input_shape.num_elements(), 0);
+  std::vector<int> out(output_shape.num_elements(), 0);
+
+  // Fill values
+  for (auto&& hit : sector_hits) {
+    const int emtf_chamber = hit.emtfChamber();
+    const int emtf_segment = hit.emtfSegment();
+    emtf_assert(hit.valid() == true);  // segment must be valid
+
+    // Accept at most 2 segments
+    if (not(static_cast<unsigned>(emtf_segment) < num_segments))
+      continue;
+
+    // Populate the variables
+    //
+    // +-------------+-------------+-------------+-------------+
+    // | emtf_phi    | emtf_bend   | emtf_theta1 | emtf_theta2 |
+    // +-------------+-------------+-------------+-------------+
+    // | emtf_qual1  | emtf_qual2  | emtf_time   | seg_zones   |
+    // +-------------+-------------+-------------+-------------+
+    // | seg_tzones  | seg_cscfr   | seg_gemdl   | seg_bx      |
+    // +-------------+-------------+-------------+-------------+
+    // | seg_valid   |             |             |             |
+    // +-------------+-------------+-------------+-------------+
+
+    const unsigned iseg = (emtf_chamber * num_segments) + emtf_segment;
+    const unsigned ivar = 0;
+    auto in0_iter = std::next(in0.begin(), input_shape.get_index({iseg, ivar}));
+
+    *(in0_iter++) = hit.emtfPhi();
+    *(in0_iter++) = hit.emtfBend();
+    *(in0_iter++) = hit.emtfTheta1();
+    *(in0_iter++) = hit.emtfTheta2();
+    *(in0_iter++) = hit.emtfQual1();
+    *(in0_iter++) = hit.emtfQual2();
+    *(in0_iter++) = hit.emtfTime();
+    *(in0_iter++) = hit.zones();
+    *(in0_iter++) = hit.timezones();
+    *(in0_iter++) = hit.cscfr();
+    *(in0_iter++) = hit.gemdl();
+    *(in0_iter++) = hit.bx();
+    *(in0_iter++) = hit.valid();
+  }  // end loop
+
+  // Fit
+  iWorker.model_->fit(in0, out);
+
+  // Convert/format output tracks
+  TrackFormatter formatter;
+  const unsigned model_version = iWorker.model_->version();
+  const bool unconstrained = iWorker.model_->unconstrained();
+
+  // Extract results
+  for (unsigned itrk = 0, ivar = 0; itrk < num_tracks; ++itrk) {
+    EMTFTrack trk;
+
+    // Get the span of data and do the conversion
+    auto out_iter = std::next(out.begin(), output_shape.get_index({itrk, ivar}));
+    auto out_iter_end =
+        ((itrk + 1) < num_tracks) ? std::next(out.begin(), output_shape.get_index({itrk + 1, ivar})) : out.end();
+    std::vector<int> trk_data(out_iter, out_iter_end);
+    formatter.format(endcap, sector, bx, model_version, unconstrained, trk_data, trk);
+
+    // Skip the invalid track
+    if (not trk.valid())
+      continue;
+
+    // Keep the valid track
+    sector_tracks.push_back(std::move(trk));
+  }  // end loop
+}
 
 void SectorProcessor::dump_input_output(const edm::EventID& evt_id,
                                         const SubsystemCollection& muon_primitives,
