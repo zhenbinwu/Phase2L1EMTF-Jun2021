@@ -1,0 +1,6 @@
+<environment>
+  <bin name="TestDebugMacros" file="unittests/TestDebugMacros.cpp">
+    <use name="L1Trigger/Phase2L1EMTF"/>
+    <use name="cppunit"/>
+  </bin>
+</environment>
