@@ -187,14 +187,16 @@ void TrackFormatter::format(int endcap,
                             bool unconstrained,
                             const Vector& trk_data,
                             EMTFTrack& trk) const {
-  static const int invalid_marker_trk_seg = 115 * 2;  // num_emtf_chambers_v3 * num_emtf_segments_v3
+  static const int invalid_marker_trk_seg = 115 * 2;          // num_emtf_chambers_v3 * num_emtf_segments_v3
+  static const int col_sector = (288 / 2) + 27;               // (num_emtf_img_cols / 2) + offset
+  static const int ph_sector = (col_sector << 4) + (1 << 3);  // col -> ph by adding 4 bits (lshift) + offset
 
   const int endcap_pm = (endcap == 2) ? -1 : endcap;  // using endcap [-1,+1] convention
 
   // For now, these are all hardcoded
   assert(trk_data.size() == 54);
-  // trk_data[0..36] are unused
-  int ph_median = trk_data.at(36);
+  // trk_data[0..35] are unused
+  int ph_median = trk_data.at(36) + ph_sector;
   int th_median = trk_data.at(37);
   int trk_qual = trk_data.at(38);
   //int trk_bx = trk_data.at(39);  // unused

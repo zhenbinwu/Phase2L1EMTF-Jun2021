@@ -388,7 +388,7 @@ void SegmentFormatter::format_impl(int endcap,
   int tp_wire1 = digi.getKeyWG();  // wiregroup
   int tp_wire2 = 0;
   // getSlope() is not yet available in 11_1_7
-  //int tp_bend = static_cast<int>(digi.getSlope()) * (static_cast<int>(digi.getBend()) * 2 - 1);
+  //int tp_bend = static_cast<int>(digi.getSlope()) * (digi.getBend() == 0 ? -1 : 1);
   int tp_bend = 0;
   // getQuality() is not yet available in 11_1_7
   //int tp_quality = digi.getQuality();
@@ -414,7 +414,7 @@ void SegmentFormatter::format_impl(int endcap,
   // Apply CSC Run 2 pattern -> bend conversion
   // Override tp_bend
   constexpr int tp_bend_lut_size = 11;
-  constexpr int tp_bend_lut[tp_bend_lut_size] = {-5, -5, -4, 4, -3, 3, -2, 2, -1, 1, 0};
+  constexpr int tp_bend_lut[tp_bend_lut_size] = {-5, 5, -4, 4, -3, 3, -2, 2, -1, 1, 0};
   emtf_assert(tp_pattern < tp_bend_lut_size);
   tp_bend = tp_bend_lut[tp_pattern];
   tp_bend *= endcap_pm;  // sign flip depending on endcap
@@ -430,7 +430,7 @@ void SegmentFormatter::format_impl(int endcap,
   }
 
   // Guard against unexpected data
-  // It is sufficient to do this in only one sector
+  // Do this at the first sector only
   if ((endcap == 1) and (sector == 1) and (bx == 0)) {
     const auto [max_strip, max_wire] = toolbox::get_csc_max_strip_and_wire(tp_station, tp_ring);
     const auto [max_pattern, max_quality] = toolbox::get_csc_max_pattern_and_quality(tp_station, tp_ring);
@@ -475,20 +475,21 @@ void SegmentFormatter::format_impl(int endcap,
     return;
 
   // Get global coordinates and convert them
-  auto digi_w1 = digi;  // make a copy
+  auto detid_corr = CSCDetId(detid.endcap(), detid.station(), tp_ring, detid.chamber(), detid.layer());  // correct ring
+  auto digi_w1 = digi;
   auto digi_w2 = digi;
   digi_w1.setStrip(tp_strip);  // patch the halfstrip number
   digi_w2.setStrip(tp_strip);
   digi_w1.setWireGroup(tp_wire1);  // patch the wiregroup number
   digi_w2.setWireGroup(tp_wire2);
 
-  const GlobalPoint& gp_w1 = get_global_point(detgeom, detid, digi_w1);
-  const GlobalPoint& gp_w2 = has_wire_ambi ? get_global_point(detgeom, detid, digi_w2) : GlobalPoint{};
+  const GlobalPoint& gp_w1 = get_global_point(detgeom, detid_corr, digi_w1);
+  const GlobalPoint& gp_w2 = has_wire_ambi ? get_global_point(detgeom, detid_corr, digi_w2) : GlobalPoint{};
   const float glob_phi = toolbox::rad_to_deg(gp_w1.phi().value());
   const float glob_theta1 = toolbox::rad_to_deg(gp_w1.theta().value());
   const float glob_theta2 = has_wire_ambi ? toolbox::rad_to_deg(gp_w2.theta().value()) : 0.;
   const float glob_time = 0.;  // no fine resolution timing
-  const int ph = toolbox::calc_phi_loc_int(glob_phi, sector);
+  const int ph = toolbox::calc_phi_int(glob_phi, sector);
   const int th1 = toolbox::calc_theta_int(glob_theta1, endcap_pm);
   const int th2 = has_wire_ambi ? toolbox::calc_theta_int(glob_theta2, endcap_pm) : 0;
   emtf_assert((0 <= ph) and (ph < 5040));
@@ -648,7 +649,7 @@ void SegmentFormatter::format_impl(int endcap,
   int tp_cscfr = toolbox::get_trigger_cscfr(tp_ring, tp_station, tp_chamber);
 
   // Guard against unexpected data
-  // It is sufficient to do this in only one sector
+  // Do this at the first sector only
   if ((endcap == 1) and (sector == 1) and (bx == 0)) {
     emtf_assert((MIN_ENDCAP <= tp_endcap) and (tp_endcap <= MAX_ENDCAP));
     emtf_assert((MIN_TRIGSECTOR <= tp_sector) and (tp_sector <= MAX_TRIGSECTOR));
@@ -689,7 +690,7 @@ void SegmentFormatter::format_impl(int endcap,
   const float glob_phi = toolbox::rad_to_deg(gp.phi().value());
   const float glob_theta = toolbox::rad_to_deg(gp.theta().value());
   const float glob_time = digi.time();
-  const int ph = toolbox::calc_phi_loc_int(glob_phi, sector);
+  const int ph = toolbox::calc_phi_int(glob_phi, sector);
   const int th = toolbox::calc_theta_int(glob_theta, endcap_pm);
   emtf_assert((0 <= ph) and (ph < 5040));
   emtf_assert((1 <= th) and (th < 128));
@@ -821,7 +822,7 @@ void SegmentFormatter::format_impl(int endcap,
   int tp_subbx = 0;  // no fine resolution timing
 
   // Guard against unexpected data
-  // It is sufficient to do this in only one sector
+  // Do this at the first sector only
   if ((endcap == 1) and (sector == 1) and (bx == 0)) {
     emtf_assert((MIN_ENDCAP <= tp_endcap) and (tp_endcap <= MAX_ENDCAP));
     emtf_assert((MIN_TRIGSECTOR <= tp_sector) and (tp_sector <= MAX_TRIGSECTOR));
@@ -863,7 +864,7 @@ void SegmentFormatter::format_impl(int endcap,
   const float glob_phi = toolbox::rad_to_deg(gp.phi().value());
   const float glob_theta = toolbox::rad_to_deg(gp.theta().value());
   const float glob_time = 0.;  // no fine resolution timing
-  const int ph = toolbox::calc_phi_loc_int(glob_phi, sector);
+  const int ph = toolbox::calc_phi_int(glob_phi, sector);
   const int th = toolbox::calc_theta_int(glob_theta, endcap_pm);
   emtf_assert((0 <= ph) and (ph < 5040));
   emtf_assert((1 <= th) and (th < 128));
@@ -953,7 +954,7 @@ void SegmentFormatter::format_impl(int endcap,
   int tp_bx = static_cast<int>(digi.getBX()) + me0_bx_shift;
   int tp_phiposition = digi.getPhiposition();  // in half-strip unit
   int tp_partition = digi.getPartition();      // in half-roll unit
-  int tp_bend = static_cast<int>(digi.getDeltaphi()) * (static_cast<int>(digi.getBend()) * 2 - 1);
+  int tp_bend = static_cast<int>(digi.getDeltaphi()) * (digi.getBend() == 0 ? 1 : -1);
   int tp_quality = digi.getQuality();
   bool tp_valid = digi.isValid();
 
@@ -1003,7 +1004,7 @@ void SegmentFormatter::format_impl(int endcap,
   int tp_subbx = 0;  // no fine resolution timing
 
   // Guard against unexpected data
-  // It is sufficient to do this in only one sector
+  // Do this at the first sector only
   if ((endcap == 1) and (sector == 1) and (bx == 0)) {
     emtf_assert((MIN_ENDCAP <= tp_endcap) and (tp_endcap <= MAX_ENDCAP));
     emtf_assert((MIN_TRIGSECTOR <= tp_sector) and (tp_sector <= MAX_TRIGSECTOR));
@@ -1042,7 +1043,7 @@ void SegmentFormatter::format_impl(int endcap,
   const float glob_phi = toolbox::rad_to_deg(gp.phi().value());
   const float glob_theta = toolbox::rad_to_deg(gp.theta().value());
   const float glob_time = 0.;  // no fine resolution timing
-  const int ph = toolbox::calc_phi_loc_int(glob_phi, sector);
+  const int ph = toolbox::calc_phi_int(glob_phi, sector);
   const int th = toolbox::calc_theta_int(glob_theta, endcap_pm);
   emtf_assert((0 <= ph) and (ph < 5040));
   emtf_assert((1 <= th) and (th < 128));

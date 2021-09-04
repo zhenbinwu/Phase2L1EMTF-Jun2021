@@ -148,7 +148,7 @@ namespace emtf {
         return loc;
       }
 
-      inline int calc_phi_loc_int(float glob, int sector) {  // glob in deg [-180..180], sector [1..6]
+      inline int calc_phi_int(float glob, int sector) {  // glob in deg [-180..180], sector [1..6]
         float loc = calc_phi_loc_deg_from_glob(glob, sector);
         loc = ((loc + 22.) < 0.) ? (loc + 360.) : loc;
         loc = (loc + 22.) * 60.;
