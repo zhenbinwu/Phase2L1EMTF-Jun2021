@@ -31,6 +31,9 @@
 // getSlope() is not yet available in 11_1_7
 #define EMTF_USE_CSC_RUN2_BEND
 
+// Does not yet support BX=[-1,0] window
+#define EMTF_USE_CSC_BX0_ONLY
+
 // GE2/1 NumberPartition is 8 in 11_1_7
 #define EMTF_USE_GEM_NPARTSGE21_8
 

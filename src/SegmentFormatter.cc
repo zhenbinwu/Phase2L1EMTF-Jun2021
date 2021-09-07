@@ -144,10 +144,8 @@ struct SegmentFormatter::find_emtf_qual {
 struct SegmentFormatter::find_emtf_time {
   constexpr int operator()(int subsystem, int tp_bx, int tp_subbx) const {
     switch (subsystem) {
-      case L1TMuon::kRPC:
-        return std::clamp((tp_bx * 16) + tp_subbx, -32, 31);  // 6-bit, signed
       default:
-        return 0;
+        return std::clamp((tp_bx * 16) + tp_subbx, -8, 7);  // 4-bit, signed
     }
   }
 };
@@ -462,7 +460,12 @@ void SegmentFormatter::format_impl(int endcap,
   auto is_in_sector_fn = is_in_sector{endcap, sector};
   auto is_in_neighbor_sector_fn = is_in_neighbor_sector{endcap, sector};
 
+#ifdef EMTF_USE_CSC_BX0_ONLY
+  const bool is_timely = is_in_bx_fn(tp_bx);
+  emtf_maybe_unused(is_kindof_in_bx_fn(tp_bx));
+#else
   const bool is_timely = (strategy == 0) ? is_in_bx_fn(tp_bx) : is_kindof_in_bx_fn(tp_bx);
+#endif
   const bool is_native = is_in_sector_fn(tp_endcap, tp_sector);
   const bool is_neighbor = is_in_neighbor_sector_fn(tp_endcap, tp_sector, tp_subsector, tp_station, tp_cscid);
 
@@ -847,7 +850,12 @@ void SegmentFormatter::format_impl(int endcap,
   auto is_in_sector_fn = is_in_sector{endcap, sector};
   auto is_in_neighbor_sector_fn = is_in_neighbor_sector{endcap, sector};
 
+#ifdef EMTF_USE_CSC_BX0_ONLY
+  const bool is_timely = is_in_bx_fn(tp_bx);
+  emtf_maybe_unused(is_kindof_in_bx_fn(tp_bx));
+#else
   const bool is_timely = (strategy == 0) ? is_in_bx_fn(tp_bx) : is_kindof_in_bx_fn(tp_bx);
+#endif
   const bool is_native = is_in_sector_fn(tp_endcap, tp_sector);
   const bool is_neighbor = is_in_neighbor_sector_fn(tp_endcap, tp_sector, tp_subsector, tp_station, tp_cscid);
 
