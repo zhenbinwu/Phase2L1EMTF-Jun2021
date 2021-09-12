@@ -27,30 +27,33 @@ void SectorProcessor::process(const EMTFWorker& iWorker,
                               const SubsystemCollection& muon_primitives,
                               EMTFHitCollection& out_hits,
                               EMTFTrackCollection& out_tracks) const {
-  const int bx = 0;  // only BX=0 at the moment
+  // Loop over BX
+  for (int bx = iWorker.minBX_; bx <= iWorker.maxBX_; ++bx) {
+    // 1 - Preprocessing
+    EMTFHitCollection sector_hits;
+    process_step_1(iWorker, endcap, sector, bx, muon_primitives, sector_hits);
 
-  // 1 - Preprocessing
-  EMTFHitCollection sector_hits;
+    // 2 - Real processing
+    // Only BX=0 is supported at the moment
+    EMTFTrackCollection sector_tracks;
+    if (bx == 0) {
+      process_step_2(iWorker, endcap, sector, bx, sector_hits, sector_tracks);
+    }
 
-  process_step_1(iWorker, endcap, sector, bx, muon_primitives, sector_hits);
-
-  // 2 - Real processing
-  EMTFTrackCollection sector_tracks;
-
-  process_step_2(iWorker, endcap, sector, bx, sector_hits, sector_tracks);
-
-  // 3 - Postprocessing
-  out_hits.insert(
-      out_hits.end(), std::make_move_iterator(sector_hits.begin()), std::make_move_iterator(sector_hits.end()));
-  out_tracks.insert(
-      out_tracks.end(), std::make_move_iterator(sector_tracks.begin()), std::make_move_iterator(sector_tracks.end()));
+    // 3 - Postprocessing
+    out_hits.insert(
+        out_hits.end(), std::make_move_iterator(sector_hits.begin()), std::make_move_iterator(sector_hits.end()));
+    out_tracks.insert(
+        out_tracks.end(), std::make_move_iterator(sector_tracks.begin()), std::make_move_iterator(sector_tracks.end()));
 
 #ifdef EMTF_DUMP_INFO
-  // Dump debugging info after the last sector only
-  if ((endcap == MAX_ENDCAP) and (sector == MAX_TRIGSECTOR)) {
-    dump_input_output(evt_id, muon_primitives, out_hits, out_tracks);
-  }
+    // Dump debugging info after the last sector only
+    if ((endcap == MAX_ENDCAP) and (sector == MAX_TRIGSECTOR) and (bx == 0)) {
+      dump_input_output(evt_id, muon_primitives, out_hits, out_tracks);
+    }
 #endif  // EMTF_DUMP_INFO is defined
+
+  }  // end loop over BX
 }
 
 void SectorProcessor::process_step_1(const EMTFWorker& iWorker,

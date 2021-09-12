@@ -506,11 +506,11 @@ void SegmentFormatter::format_impl(int endcap,
   const int emtf_theta2 = find_emtf_theta{}(subsystem, th2);
   const int emtf_qual1 = find_emtf_qual{}(subsystem, tp_quality);
   const int emtf_qual2 = tp_pattern;
-  const int emtf_time = find_emtf_time{}(subsystem, tp_bx, tp_subbx);
+  const int emtf_time = find_emtf_time{}(subsystem, tp_bx - bx, tp_subbx);
   const int emtf_site = find_emtf_site{}(subsystem, tp_station, tp_ring);
   const int emtf_host = find_emtf_host{}(subsystem, tp_station, tp_ring);
   const int seg_zones = find_seg_zones{}(emtf_host, emtf_theta1, emtf_theta2);
-  const int seg_timezones = find_seg_timezones{}(emtf_host, tp_bx);
+  const int seg_timezones = find_seg_timezones{}(emtf_host, tp_bx - bx);
 
   // Set all the variables
   hit.setRawDetId(detid.rawId());
@@ -536,7 +536,7 @@ void SegmentFormatter::format_impl(int endcap,
   hit.setCscfr(tp_cscfr);
   hit.setGemdl(tp_layer);
   hit.setSubbx(tp_subbx);
-  hit.setBx(tp_bx);
+  hit.setBx(bx);
   hit.setEmtfChamber(emtf_chamber);
   hit.setEmtfSegment(emtf_segment);
   hit.setEmtfPhi(emtf_phi);
@@ -703,11 +703,11 @@ void SegmentFormatter::format_impl(int endcap,
   const int emtf_bend = find_emtf_bend{}(subsystem, tp_bend);
   const int emtf_theta = find_emtf_theta{}(subsystem, th);
   const int emtf_qual = find_emtf_qual{}(subsystem, tp_quality);
-  const int emtf_time = find_emtf_time{}(subsystem, tp_bx, tp_subbx);
+  const int emtf_time = find_emtf_time{}(subsystem, tp_bx - bx, tp_subbx);
   const int emtf_site = find_emtf_site{}(subsystem, tp_station, tp_ring);
   const int emtf_host = find_emtf_host{}(subsystem, tp_station, tp_ring);
   const int seg_zones = find_seg_zones{}(emtf_host, emtf_theta);
-  const int seg_timezones = find_seg_timezones{}(emtf_host, tp_bx);
+  const int seg_timezones = find_seg_timezones{}(emtf_host, tp_bx - bx);
 
   // Set all the variables
   hit.setRawDetId(detid.rawId());
@@ -733,7 +733,7 @@ void SegmentFormatter::format_impl(int endcap,
   hit.setCscfr(tp_cscfr);
   hit.setGemdl(tp_layer);
   hit.setSubbx(tp_subbx);
-  hit.setBx(tp_bx);
+  hit.setBx(bx);
   hit.setEmtfChamber(emtf_chamber);
   hit.setEmtfSegment(emtf_segment);
   hit.setEmtfPhi(emtf_phi);
@@ -882,11 +882,11 @@ void SegmentFormatter::format_impl(int endcap,
   const int emtf_bend = find_emtf_bend{}(subsystem, tp_bend);
   const int emtf_theta = find_emtf_theta{}(subsystem, th);
   const int emtf_qual = find_emtf_qual{}(subsystem, tp_quality);
-  const int emtf_time = find_emtf_time{}(subsystem, tp_bx, tp_subbx);
+  const int emtf_time = find_emtf_time{}(subsystem, tp_bx - bx, tp_subbx);
   const int emtf_site = find_emtf_site{}(subsystem, tp_station, tp_ring);
   const int emtf_host = find_emtf_host{}(subsystem, tp_station, tp_ring);
   const int seg_zones = find_seg_zones{}(emtf_host, emtf_theta);
-  const int seg_timezones = find_seg_timezones{}(emtf_host, tp_bx);
+  const int seg_timezones = find_seg_timezones{}(emtf_host, tp_bx - bx);
 
   // Set all the variables
   hit.setRawDetId(detid.rawId());
@@ -912,7 +912,7 @@ void SegmentFormatter::format_impl(int endcap,
   hit.setCscfr(tp_cscfr);
   hit.setGemdl(tp_layer);
   hit.setSubbx(tp_subbx);
-  hit.setBx(tp_bx);
+  hit.setBx(bx);
   hit.setEmtfChamber(emtf_chamber);
   hit.setEmtfSegment(emtf_segment);
   hit.setEmtfPhi(emtf_phi);
@@ -1061,11 +1061,11 @@ void SegmentFormatter::format_impl(int endcap,
   const int emtf_bend = find_emtf_bend{}(subsystem, tp_bend);
   const int emtf_theta = find_emtf_theta{}(subsystem, th);
   const int emtf_qual = find_emtf_qual{}(subsystem, tp_quality);
-  const int emtf_time = find_emtf_time{}(subsystem, tp_bx, tp_subbx);
+  const int emtf_time = find_emtf_time{}(subsystem, tp_bx - bx, tp_subbx);
   const int emtf_site = find_emtf_site{}(subsystem, tp_station, tp_ring);
   const int emtf_host = find_emtf_host{}(subsystem, tp_station, tp_ring);
   const int seg_zones = find_seg_zones{}(emtf_host, emtf_theta);
-  const int seg_timezones = find_seg_timezones{}(emtf_host, tp_bx);
+  const int seg_timezones = find_seg_timezones{}(emtf_host, tp_bx - bx);
 
   // Set all the variables
   hit.setRawDetId(detid.rawId());
@@ -1091,7 +1091,7 @@ void SegmentFormatter::format_impl(int endcap,
   hit.setCscfr(tp_cscfr);
   hit.setGemdl(tp_layer);
   hit.setSubbx(tp_subbx);
-  hit.setBx(tp_bx);
+  hit.setBx(bx);
   hit.setEmtfChamber(emtf_chamber);
   hit.setEmtfSegment(emtf_segment);
   hit.setEmtfPhi(emtf_phi);
