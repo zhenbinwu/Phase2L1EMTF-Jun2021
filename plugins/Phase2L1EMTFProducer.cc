@@ -79,7 +79,7 @@ void Phase2L1EMTFProducer::produce(edm::Event& iEvent, const edm::EventSetup& iS
 // This static function provides the configuration parameters.
 void Phase2L1EMTFProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
   edm::ParameterSetDescription desc;
-  desc.add<edm::InputTag>("cscLabel", edm::InputTag("simCscTriggerPrimitiveDigis", "MPCSORTED"));
+  desc.add<edm::InputTag>("cscLabel", edm::InputTag("simCscTriggerPrimitiveDigisForEMTF", "MPCSORTED"));
   desc.add<edm::InputTag>("rpcLabel", edm::InputTag("rpcRecHitsForEMTF"));
   desc.add<edm::InputTag>("gemLabel", edm::InputTag("simMuonGEMPadDigiClusters"));
   desc.add<edm::InputTag>("me0Label", edm::InputTag("me0TriggerConvertedPseudoDigis"));
