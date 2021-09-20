@@ -108,27 +108,30 @@ struct TrackFormatter::find_emtf_mode_v1 {
 
 struct TrackFormatter::find_emtf_mode_v2 {
   // SingleMu (12)
-  // - at least one station-1 hit (ME1/1, GE1/1, ME1/2, RE1/2, ME0)
-  //   with one of the following requirements on station-2,3,4
-  //   a. if there is ME1/1 or GE1/1, require 2 more stations
-  //   b. if there is ME1/2 or RE1/2, require 1 more station
-  //   c. if there is ME0 and
-  //      i.  if there is ME1/1 or GE1/1, require 1 more station
-  //      ii. else, require 2 more stations
+  // - at least one station-1 hit (ME1/1, ME1/2, ME0)
+  //   with one of the following requirements on stations 2,3,4
+  //   a. if there is ME1/2, require 1 more station (CSC only)
+  //   b. if there is ME1/1, require 2 more stations (CSC only)
+  //   c. if there is ME0,
+  //      i.  if there is ME1/1, require 1 more station in stations 3,4 (CSC only)
+  //      ii. else, require 2 more stations (CSC only)
   //
   // DoubleMu (8)
   // - at least one station-1 hit (ME1/1, GE1/1, ME1/2, RE1/2, ME0)
-  //   with one of the following requirements on station-2,3,4
-  //   a. if there is ME1/1, GE1/1, ME1/2 or RE1/2, require 1 more station
-  //   b. if there is ME0 and
-  //      i.  if there is ME1/1, GE1/1, require no more station
+  //   with one of the following requirements on stations 2,3,4
+  //   a. if there is ME1/1 or ME1/2, require 1 more station
+  //   b. if there is GE1/1 or RE1/2, require 2 more stations
+  //   c. if there is ME0,
+  //      i.  if there is ME1/1, require no more station
   //      ii. else, require 1 more station
   //
   // TripleMu (4)
   // - at least two stations
-  //   a. same as DoubleMu req a
-  //   b. same as DoubleMu req b
-  //   c. if there no station-1 hit, require 2 more stations
+  //   a. if there is ME1/1, GE1/1, ME1/2 or RE1/2, require 1 more station
+  //   b. if there is ME0,
+  //      i.  if there is ME1/1, require no more station
+  //      ii. else, require 1 more station
+  //   c. else, require 2 more stations
   //
   // SingleHit (0)
   // - at least one station
@@ -136,45 +139,54 @@ struct TrackFormatter::find_emtf_mode_v2 {
   // Note that SingleMu, DoubleMu, TripleMu, SingleHit are mutually-exclusive categories.
   constexpr int operator()(const seg_valid_array_t& x) const {
     int mode = 0;
-    int cnt_me11 = x[0] + x[9];          // ME1/1, GE1/1
-    int cnt_me12 = x[1] + x[5];          // ME1/2, RE1/2
-    int cnt_me14 = x[11];                // ME0
-    int cnt_me22 = x[2] + x[10] + x[6];  // ME2, GE2/1, RE2/2
-    int cnt_me23 = x[3] + x[7];          // ME3, RE3
-    int cnt_me24 = x[4] + x[8];          // ME4, RE4
-    int cnt_me20 = (cnt_me22 != 0) + (cnt_me23 != 0) + (cnt_me24 != 0);
-    // SingleMu
+    int cnt_ye11 = x[0] + x[9];                                          // ME1/1, GE1/1
+    int cnt_ye12 = x[1] + x[5];                                          // ME1/2, RE1/2
+    int cnt_ye22 = x[2] + x[10] + x[6];                                  // ME2, GE2/1, RE2/2
+    int cnt_ye23 = x[3] + x[7];                                          // ME3, RE3
+    int cnt_ye24 = x[4] + x[8];                                          // ME4, RE4
+    int cnt_ye20 = (cnt_ye22 != 0) + (cnt_ye23 != 0) + (cnt_ye24 != 0);  //
+    int cnt_me11 = x[0];                                                 // ME1/1 (CSC only)
+    int cnt_me12 = x[1];                                                 // ME1/2 (CSC only)
+    int cnt_me14 = x[11];                                                // ME0
+    int cnt_me20 = x[2] + x[3] + x[4];                                   // ME2, ME3, ME4 (CSC only)
+    int cnt_me30 = x[3] + x[4];                                          // ME3, ME4 (CSC only)
+
+    // clang-format off
+    // SingleMu (12)
     {
-      bool rule_a = (cnt_me11 >= 1) and (cnt_me20 >= 2);
-      bool rule_b = (cnt_me12 >= 1) and (cnt_me20 >= 1);
-      bool rule_c_i = (cnt_me14 >= 1) and (cnt_me11 >= 1) and (cnt_me20 >= 1);
-      bool rule_c_ii = (cnt_me14 >= 1) and (cnt_me20 >= 2);
+      bool rule_a    = (cnt_me12 != 0) and (cnt_me20 >= 1);
+      bool rule_b    = (cnt_me11 != 0) and (cnt_me20 >= 2);
+      bool rule_c_i  = (cnt_me14 != 0) and (cnt_me11 != 0) and (cnt_me30 >= 1);
+      bool rule_c_ii = (cnt_me14 != 0) and (cnt_me11 == 0) and (cnt_me20 >= 2);
       if (rule_a or rule_b or rule_c_i or rule_c_ii) {
         mode |= (1 << 3);
         mode |= (1 << 2);
       }
     }
-    // DoubleMu
+    // DoubleMu (8)
     if (mode < (1 << 3)) {
-      bool rule_a_i = (cnt_me11 >= 1) and (cnt_me20 >= 1);
-      bool rule_a_ii = (cnt_me12 >= 1) and (cnt_me20 >= 1);
-      bool rule_b_i = (cnt_me14 >= 1) and (cnt_me11 >= 1);
-      bool rule_b_ii = (cnt_me14 >= 1) and (cnt_me20 >= 1);
-      if (rule_a_i or rule_a_ii or rule_b_i or rule_b_ii) {
+      bool rule_a_i  = (cnt_me12 != 0) and (cnt_ye20 >= 1);
+      bool rule_a_ii = (cnt_me11 != 0) and (cnt_ye20 >= 1);
+      bool rule_b_i  = (cnt_ye12 != 0) and (cnt_ye20 >= 2);
+      bool rule_b_ii = (cnt_ye11 != 0) and (cnt_ye20 >= 2);
+      bool rule_c_i  = (cnt_me14 != 0) and (cnt_me11 != 0) and (cnt_ye20 >= 0);
+      bool rule_c_ii = (cnt_me14 != 0) and (cnt_me11 == 0) and (cnt_ye20 >= 1);
+      if (rule_a_i or rule_a_ii or rule_b_i or rule_b_ii or rule_c_i or rule_c_ii) {
         mode |= (1 << 3);
       }
     }
-    // TripleMu
+    // TripleMu (4)
     if (mode < (1 << 2)) {
-      bool rule_a_i = (cnt_me11 >= 1) and (cnt_me20 >= 1);
-      bool rule_a_ii = (cnt_me12 >= 1) and (cnt_me20 >= 1);
-      bool rule_b_i = (cnt_me14 >= 1) and (cnt_me11 >= 1);
-      bool rule_b_ii = (cnt_me14 >= 1) and (cnt_me20 >= 1);
-      bool rule_c = (cnt_me20 >= 2);
+      bool rule_a_i  = (cnt_ye12 != 0) and (cnt_ye20 >= 1);
+      bool rule_a_ii = (cnt_ye11 != 0) and (cnt_ye20 >= 1);
+      bool rule_b_i  = (cnt_me14 != 0) and (cnt_me11 != 0) and (cnt_ye20 >= 0);
+      bool rule_b_ii = (cnt_me14 != 0) and (cnt_me11 == 0) and (cnt_ye20 >= 1);
+      bool rule_c    = (cnt_ye20 >= 2);
       if (rule_a_i or rule_a_ii or rule_b_i or rule_b_ii or rule_c) {
         mode |= (1 << 2);
       }
     }
+    // clang-format on
     return mode;
   }
 };
