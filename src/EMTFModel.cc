@@ -158,6 +158,7 @@ void EMTFModel::fit_impl_v3(const Vector& in0, Vector& out) const {
   trk_seg_v_t trk_seg_rm_v[duperemoval_config::n_out];
   trk_feat_t trk_feat_rm[duperemoval_config::n_out * num_emtf_features];
   trk_valid_t trk_valid_rm[duperemoval_config::n_out];
+  trk_origin_t trk_origin_rm[duperemoval_config::n_out];
   trk_invpt_t trk_invpt[fullyconnect_config::n_out];
   trk_phi_t trk_phi[fullyconnect_config::n_out];
   trk_eta_t trk_eta[fullyconnect_config::n_out];
@@ -203,7 +204,7 @@ void EMTFModel::fit_impl_v3(const Vector& in0, Vector& out) const {
   // Layer 5 - Duplicate removal
 
   duperemoval_layer<m_zone_any_tag>(
-      trk_seg, trk_seg_v, trk_feat, trk_valid, trk_seg_rm, trk_seg_rm_v, trk_feat_rm, trk_valid_rm);
+      trk_seg, trk_seg_v, trk_feat, trk_valid, trk_seg_rm, trk_seg_rm_v, trk_feat_rm, trk_valid_rm, trk_origin_rm);
 
   // Layer 6 - Fully connected
 

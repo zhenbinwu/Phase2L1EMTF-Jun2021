@@ -50,20 +50,20 @@ struct TrackFormatter::find_emtf_pt {
     // Call find_emtf_pt_no_calib()
     int trk_pt_no_calib = find_emtf_pt_no_calib{}(trk_invpt);
     // Calibration
-    const int last_binx = 50;  // do not use the entries beyond this bin
+    const int last_binx = 30;  // do not use the entries beyond this bin
                                // last_binx must be less than nbinsx
     const int nbinsx = lut.size();
     const float xmin = 0.;
     const float xmax = 60.;
-    const float step = (xmax - xmin) / nbinsx;  // bin size
+    const float bin_size = (xmax - xmin) / nbinsx;  // bin size
     const float eps_trk_pt = std::ldexp(1.0f, -1 * (W_OUT - I_OUT));
     float x_f32 = eps_trk_pt * trk_pt_no_calib;
-    int binx = static_cast<int>((x_f32 - xmin) / step);  // no rounding
+    int binx = static_cast<int>((x_f32 - xmin) / bin_size);  // no rounding
     int binx_safe = std::min(binx, last_binx);
-    float x0 = static_cast<float>(binx_safe) * step;
-    float x1 = static_cast<float>(binx_safe + 1) * step;
-    float y0 = lut[binx_safe];
-    float y1 = lut[binx_safe + 1];
+    float x0 = static_cast<float>(binx_safe) * bin_size;
+    float x1 = static_cast<float>(binx_safe + 1) * bin_size;
+    float y0 = lut.at(binx_safe);
+    float y1 = lut.at(binx_safe + 1);
     float y_f32 = 0.;
     if (binx < last_binx) {
       y_f32 = (x_f32 - x0) / (x1 - x0) * (y1 - y0) + y0;  // interpolate
@@ -79,13 +79,12 @@ struct TrackFormatter::find_emtf_pt {
   static const lut_type lut;
 };
 
-const TrackFormatter::find_emtf_pt::lut_type TrackFormatter::find_emtf_pt::lut = {{
-    0.000,  1.082,  2.256,  3.485,  4.761,  6.081,  7.437,  8.825,  10.240, 11.678, 13.135, 14.611,
-    16.107, 17.626, 19.172, 20.750, 22.368, 24.031, 25.744, 27.511, 29.330, 31.199, 33.111, 35.054,
-    37.015, 38.977, 40.922, 42.833, 44.694, 46.491, 48.216, 49.862, 51.429, 52.918, 54.336, 55.689,
-    56.983, 58.226, 59.425, 60.587, 61.716, 62.818, 63.897, 64.956, 65.998, 67.026, 68.041, 69.045,
-    70.040, 71.028, 72.008, 72.983, 73.952, 74.917, 75.877, 76.834, 77.788, 78.739, 79.688, 80.635,
-}};
+const TrackFormatter::find_emtf_pt::lut_type TrackFormatter::find_emtf_pt::lut = {
+    {0.000,  1.050,  2.194,  3.386,  4.620,  5.891,  7.197,  8.536,  9.904,  11.303, 12.732, 14.194,
+     15.692, 17.229, 18.810, 20.439, 22.122, 23.860, 25.655, 27.505, 29.406, 31.349, 33.322, 35.310,
+     37.296, 39.260, 41.184, 43.053, 44.853, 46.575, 48.215, 49.773, 51.251, 52.656, 53.995, 55.274,
+     56.503, 57.688, 58.834, 59.949, 61.036, 62.100, 63.144, 64.171, 65.183, 66.183, 67.173, 68.153,
+     69.125, 70.091, 71.050, 72.004, 72.954, 73.899, 74.841, 75.780, 76.716, 77.649, 78.580, 79.510}};
 
 struct TrackFormatter::find_emtf_mode_v1 {
   constexpr int operator()(const seg_valid_array_t& x) const {
