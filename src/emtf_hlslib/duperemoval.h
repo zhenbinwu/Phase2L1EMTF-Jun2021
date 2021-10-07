@@ -85,6 +85,7 @@ namespace emtf_hlslib {
         trk_seg_reduced[reduced_begin_index + 4] = tmp_b;
 
         // Bitwise OR
+        trk_seg_reduced_v[i] = 0;
         trk_seg_reduced_v[i][0] = vld_0 | vld_9 | vld_1 | vld_5;
         trk_seg_reduced_v[i][1] = vld_2 | vld_a | vld_6;
         trk_seg_reduced_v[i][2] = vld_3 | vld_7;
@@ -116,8 +117,7 @@ namespace emtf_hlslib {
       }  // end i loop
 
       // Survivor count
-      typedef ap_uint<detail::ceil_log2<N - 1>::value> idx_t;
-      idx_t cnt = 0;
+      trk_origin_t cnt = 0;
 
       // trk 0 is not a duplicate by construction
       survivors_tmp[(static_cast<unsigned>(cnt) * N) + 0] = 1;  // set bit to 1
@@ -125,8 +125,8 @@ namespace emtf_hlslib {
 
       // Loop over pairs of tracks (trk 0 is skipped), and check all 5 sites for each pair
       for (unsigned i = 1; i < N; i++) {
-        // Kill the track if it is a duplicate
-        bool_t killed = 0;
+        // Kill the track if it is a duplicate, or is invalid
+        bool_t killed = !(trk_seg_reduced_v[i].range(num_emtf_sites_rm - 1, 0));
 
         for (unsigned j = 0; j < i; j++) {
           bool_t killed_tmp = 0;
@@ -189,7 +189,8 @@ namespace emtf_hlslib {
                                      trk_seg_t trk_seg_rm[duperemoval_config::n_out * num_emtf_sites],
                                      trk_seg_v_t trk_seg_rm_v[duperemoval_config::n_out],
                                      trk_feat_t trk_feat_rm[duperemoval_config::n_out * num_emtf_features],
-                                     trk_valid_t trk_valid_rm[duperemoval_config::n_out]) {
+                                     trk_valid_t trk_valid_rm[duperemoval_config::n_out],
+                                     trk_origin_t trk_origin_rm[duperemoval_config::n_out]) {
       // Remove duplicates by saving only the survivors
       const trk_seg_t invalid_marker_trk_seg = model_config::n_in;
       const trk_feat_t invalid_marker_trk_feat = 0;
@@ -197,8 +198,9 @@ namespace emtf_hlslib {
       // Multiplex to output
       for (unsigned i = 0; i < duperemoval_config::n_out; i++) {
         // Fill with default values
-        trk_valid_rm[i] = 0;
         trk_seg_rm_v[i] = 0;
+        trk_valid_rm[i] = 0;
+        trk_origin_rm[i] = 0;
         detail::fill_n_values<num_emtf_sites>(&(trk_seg_rm[i * num_emtf_sites]), invalid_marker_trk_seg);
         detail::fill_n_values<num_emtf_features>(&(trk_feat_rm[i * num_emtf_features]), invalid_marker_trk_feat);
 
@@ -212,8 +214,9 @@ namespace emtf_hlslib {
           const bool_t survived = survivors[i][j];
 
           if (survived) {
-            trk_valid_rm[i] = trk_valid[j];
             trk_seg_rm_v[i] = trk_seg_v[j];
+            trk_valid_rm[i] = trk_valid[j];
+            trk_origin_rm[i] = j;
             // Copy to arrays
             detail::copy_n_values<num_emtf_sites>(&(trk_seg[j * num_emtf_sites]), &(trk_seg_rm[i * num_emtf_sites]));
             detail::copy_n_values<num_emtf_features>(&(trk_feat[j * num_emtf_features]),
@@ -242,7 +245,8 @@ namespace emtf_hlslib {
                         trk_seg_t trk_seg_rm[duperemoval_config::n_out * num_emtf_sites],
                         trk_seg_v_t trk_seg_rm_v[duperemoval_config::n_out],
                         trk_feat_t trk_feat_rm[duperemoval_config::n_out * num_emtf_features],
-                        trk_valid_t trk_valid_rm[duperemoval_config::n_out]) {
+                        trk_valid_t trk_valid_rm[duperemoval_config::n_out],
+                        trk_origin_t trk_origin_rm[duperemoval_config::n_out]) {
       // Intermediate arrays
       trk_seg_t trk_seg_reduced[duperemoval_config::n_in * num_emtf_sites_rm];
       trk_seg_v_t trk_seg_reduced_v[duperemoval_config::n_in];
@@ -252,8 +256,16 @@ namespace emtf_hlslib {
 
       duperemoval_find_dupes_op(trk_seg_reduced, trk_seg_reduced_v, survivors);
 
-      duperemoval_remove_dupes_op(
-          trk_seg, trk_seg_v, trk_feat, trk_valid, survivors, trk_seg_rm, trk_seg_rm_v, trk_feat_rm, trk_valid_rm);
+      duperemoval_remove_dupes_op(trk_seg,
+                                  trk_seg_v,
+                                  trk_feat,
+                                  trk_valid,
+                                  survivors,
+                                  trk_seg_rm,
+                                  trk_seg_rm_v,
+                                  trk_feat_rm,
+                                  trk_valid_rm,
+                                  trk_origin_rm);
     }
 
     // _____________________________________________________________________________
@@ -267,7 +279,8 @@ namespace emtf_hlslib {
                            trk_seg_t trk_seg_rm[duperemoval_config::n_out * num_emtf_sites],
                            trk_seg_v_t trk_seg_rm_v[duperemoval_config::n_out],
                            trk_feat_t trk_feat_rm[duperemoval_config::n_out * num_emtf_features],
-                           trk_valid_t trk_valid_rm[duperemoval_config::n_out]) {
+                           trk_valid_t trk_valid_rm[duperemoval_config::n_out],
+                           trk_origin_t trk_origin_rm[duperemoval_config::n_out]) {
       // Check assumptions
       static_assert(duperemoval_config::n_in == num_emtf_tracks, "duperemoval_config::n_in check failed");
       static_assert(duperemoval_config::n_out == num_emtf_tracks, "duperemoval_config::n_out check failed");
@@ -276,7 +289,7 @@ namespace emtf_hlslib {
       static_assert(dio_survivor_t::width == duperemoval_config::n_in, "dio_survivor_t type check failed");
 
       duperemoval_op<Zone>(
-          trk_seg, trk_seg_v, trk_feat, trk_valid, trk_seg_rm, trk_seg_rm_v, trk_feat_rm, trk_valid_rm);
+          trk_seg, trk_seg_v, trk_feat, trk_valid, trk_seg_rm, trk_seg_rm_v, trk_feat_rm, trk_valid_rm, trk_origin_rm);
     }
 
   }  // namespace phase2
