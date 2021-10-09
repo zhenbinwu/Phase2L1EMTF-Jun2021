@@ -3,6 +3,7 @@
 #include <algorithm>  // provides std::copy, std::transform
 #include <cmath>
 #include <iostream>
+#include <set>
 
 using namespace emtf::phase2;
 
@@ -107,30 +108,35 @@ struct TrackFormatter::find_emtf_mode_v1 {
 
 struct TrackFormatter::find_emtf_mode_v2 {
   // SingleMu (12)
-  // - at least one station-1 hit (ME1/1, ME1/2, ME0)
+  // - at least one station-1 segment (ME1/1, GE1/1, ME1/2, RE1/2, ME0)
   //   with one of the following requirements on stations 2,3,4
-  //   a. if there is ME1/2, require 1 more station (CSC only)
-  //   b. if there is ME1/1, require 2 more stations (CSC only)
+  //   a. if there is ME1/2 or RE1/2,
+  //      i.  if there is ME1/2, require 1 more CSC station
+  //      ii. else, require 1 more CSC station + 1 more station
+  //   b. if there is ME1/1 or GE1/1,
+  //      i.  if there is ME1/1, require 1 more CSC station + 1 more station
+  //      ii. else, require 2 more CSC stations
   //   c. if there is ME0,
-  //      i.  if there is ME1/1, require 1 more station in stations 3,4 (CSC only)
-  //      ii. else, require 2 more stations (CSC only)
+  //      i.  if there is ME1/1, require 1 more station in stations 3,4
+  //      ii. else, require 1 more CSC station + 1 more station
   //
   // DoubleMu (8)
-  // - at least one station-1 hit (ME1/1, GE1/1, ME1/2, RE1/2, ME0)
+  // - at least one station-1 segment (ME1/1, GE1/1, ME1/2, RE1/2, ME0)
   //   with one of the following requirements on stations 2,3,4
   //   a. if there is ME1/1 or ME1/2, require 1 more station
-  //   b. if there is GE1/1 or RE1/2, require 2 more stations
+  //   b. if there is GE1/1 or RE1/2, require 1 more CSC station
   //   c. if there is ME0,
-  //      i.  if there is ME1/1, require no more station
-  //      ii. else, require 1 more station
+  //      i.  if there is ME1/1, require 1 more station
+  //      ii. else, require 1 more CSC station
   //
   // TripleMu (4)
   // - at least two stations
-  //   a. if there is ME1/1, GE1/1, ME1/2 or RE1/2, require 1 more station
-  //   b. if there is ME0,
-  //      i.  if there is ME1/1, require no more station
-  //      ii. else, require 1 more station
-  //   c. else, require 2 more stations
+  //   a. if there is ME1/1 or ME1/2, require 1 more station
+  //   b. if there is GE1/1 or RE1/2, require 1 more CSC station
+  //   c. if there is ME0,
+  //      i.  if there is ME1/1, require 1 more station
+  //      ii. else, require 1 more CSC station
+  //   d. else, require 2 more CSC stations
   //
   // SingleHit (0)
   // - at least one station
@@ -143,45 +149,49 @@ struct TrackFormatter::find_emtf_mode_v2 {
     int cnt_ye22 = x[2] + x[10] + x[6];                                  // ME2, GE2/1, RE2/2
     int cnt_ye23 = x[3] + x[7];                                          // ME3, RE3
     int cnt_ye24 = x[4] + x[8];                                          // ME4, RE4
-    int cnt_ye20 = (cnt_ye22 != 0) + (cnt_ye23 != 0) + (cnt_ye24 != 0);  //
-    int cnt_me11 = x[0];                                                 // ME1/1 (CSC only)
-    int cnt_me12 = x[1];                                                 // ME1/2 (CSC only)
-    int cnt_me14 = x[11];                                                // ME0
-    int cnt_me20 = x[2] + x[3] + x[4];                                   // ME2, ME3, ME4 (CSC only)
-    int cnt_me30 = x[3] + x[4];                                          // ME3, ME4 (CSC only)
+    int cnt_ye2a = (cnt_ye22 != 0) + (cnt_ye23 != 0) + (cnt_ye24 != 0);  //
+    int cnt_ye2b = (cnt_ye23 != 0) + (cnt_ye24 != 0);                    //
+    int cnt_me11 = x[0];                                                 // ME1/1 only
+    int cnt_me12 = x[1];                                                 // ME1/2 only
+    int cnt_me14 = x[11];                                                // ME0 only
+    int cnt_me2a = (x[2] != 0) + (x[3] != 0) + (x[4] != 0);              //
 
     // clang-format off
     // SingleMu (12)
     {
-      bool rule_a    = (cnt_me12 != 0) and (cnt_me20 >= 1);
-      bool rule_b    = (cnt_me11 != 0) and (cnt_me20 >= 2);
-      bool rule_c_i  = (cnt_me14 != 0) and (cnt_me11 != 0) and (cnt_me30 >= 1);
-      bool rule_c_ii = (cnt_me14 != 0) and (cnt_me11 == 0) and (cnt_me20 >= 2);
-      if (rule_a or rule_b or rule_c_i or rule_c_ii) {
+      bool rule_a_i  = (cnt_me12 != 0) and (cnt_me2a >= 1);
+      bool rule_a_ii = (cnt_ye12 != 0) and (cnt_me2a >= 1) and (cnt_ye2a >= 2);
+      bool rule_b_i  = (cnt_me11 != 0) and (cnt_me2a >= 1) and (cnt_ye2a >= 2);
+      bool rule_b_ii = (cnt_ye11 != 0) and (cnt_me2a >= 2);
+      bool rule_c_i  = (cnt_me14 != 0) and (cnt_me11 != 0) and (cnt_ye2b >= 1);
+      bool rule_c_ii = (cnt_me14 != 0) and (cnt_me2a >= 1) and (cnt_ye2a >= 2);
+      if (rule_a_i or rule_a_ii or rule_b_i or rule_b_ii or rule_c_i or rule_c_ii) {
         mode |= (1 << 3);
         mode |= (1 << 2);
       }
     }
     // DoubleMu (8)
     if (mode < (1 << 3)) {
-      bool rule_a_i  = (cnt_me12 != 0) and (cnt_ye20 >= 1);
-      bool rule_a_ii = (cnt_me11 != 0) and (cnt_ye20 >= 1);
-      bool rule_b_i  = (cnt_ye12 != 0) and (cnt_ye20 >= 2);
-      bool rule_b_ii = (cnt_ye11 != 0) and (cnt_ye20 >= 2);
-      bool rule_c_i  = (cnt_me14 != 0) and (cnt_me11 != 0) and (cnt_ye20 >= 0);
-      bool rule_c_ii = (cnt_me14 != 0) and (cnt_me11 == 0) and (cnt_ye20 >= 1);
+      bool rule_a_i  = (cnt_me12 != 0) and (cnt_ye2a >= 1);
+      bool rule_a_ii = (cnt_me11 != 0) and (cnt_ye2a >= 1);
+      bool rule_b_i  = (cnt_ye12 != 0) and (cnt_me2a >= 1);
+      bool rule_b_ii = (cnt_ye11 != 0) and (cnt_me2a >= 1);
+      bool rule_c_i  = (cnt_me14 != 0) and (cnt_me11 != 0) and (cnt_ye2a >= 1);
+      bool rule_c_ii = (cnt_me14 != 0) and (cnt_me2a >= 1);
       if (rule_a_i or rule_a_ii or rule_b_i or rule_b_ii or rule_c_i or rule_c_ii) {
         mode |= (1 << 3);
       }
     }
     // TripleMu (4)
     if (mode < (1 << 2)) {
-      bool rule_a_i  = (cnt_ye12 != 0) and (cnt_ye20 >= 1);
-      bool rule_a_ii = (cnt_ye11 != 0) and (cnt_ye20 >= 1);
-      bool rule_b_i  = (cnt_me14 != 0) and (cnt_me11 != 0) and (cnt_ye20 >= 0);
-      bool rule_b_ii = (cnt_me14 != 0) and (cnt_me11 == 0) and (cnt_ye20 >= 1);
-      bool rule_c    = (cnt_ye20 >= 2);
-      if (rule_a_i or rule_a_ii or rule_b_i or rule_b_ii or rule_c) {
+      bool rule_a_i  = (cnt_me12 != 0) and (cnt_ye2a >= 1);
+      bool rule_a_ii = (cnt_me11 != 0) and (cnt_ye2a >= 1);
+      bool rule_b_i  = (cnt_ye12 != 0) and (cnt_me2a >= 1);
+      bool rule_b_ii = (cnt_ye11 != 0) and (cnt_me2a >= 1);
+      bool rule_c_i  = (cnt_me14 != 0) and (cnt_me11 != 0) and (cnt_ye2a >= 1);
+      bool rule_c_ii = (cnt_me14 != 0) and (cnt_me2a >= 1);
+      bool rule_d    = (cnt_me2a >= 2);
+      if (rule_a_i or rule_a_ii or rule_b_i or rule_b_ii or rule_c_i or rule_c_ii or rule_d) {
         mode |= (1 << 2);
       }
     }
@@ -229,6 +239,17 @@ void TrackFormatter::format(int endcap,
   const int emtf_pt = find_emtf_pt{}(trk_invpt);  // with calibration
   const int emtf_mode_v1 = find_emtf_mode_v1{}(seg_valid_array);
   const int emtf_mode_v2 = find_emtf_mode_v2{}(seg_valid_array);
+
+  // Apply Phase-1 GMT quality requirement
+  // - quality 4: [3, 5, 6, 12]
+  // - quality 8: [7, 9, 10]
+  // - quality 12: [11, 13, 14, 15]
+  static const std::set<int> good_modes = {3, 5, 6, 12, 7, 9, 10, 11, 13, 14, 15};
+  trk_valid = (good_modes.find(emtf_mode_v1) != good_modes.end());
+
+  // Invalid track
+  if (not trk_valid)
+    return;
 
   // Set all the variables
   trk.setSegRefArray(seg_ref_array);
