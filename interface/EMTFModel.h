@@ -57,6 +57,14 @@ namespace emtf {
       static constexpr int num_emtf_tracks_v3 = 4;          // per sector
       static constexpr int num_emtf_trk_variables_v3 = 54;  // per track
 
+      // Default NN output values as obtained from the test bench
+      static constexpr int trk_invpt_default_v3 = 632;
+      static constexpr int trk_phi_default_v3 = 0;
+      static constexpr int trk_eta_default_v3 = 0;
+      static constexpr int trk_d0_default_v3 = 0;
+      static constexpr int trk_z0_default_v3 = 0;
+      static constexpr int trk_beta_default_v3 = 0;
+
       unsigned version_;    // model version
       bool unconstrained_;  // unconstrained fit
     };

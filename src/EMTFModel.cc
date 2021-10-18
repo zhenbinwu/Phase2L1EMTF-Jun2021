@@ -208,7 +208,29 @@ void EMTFModel::fit_impl_v3(const Vector& in0, Vector& out) const {
 
   // Layer 6 - Fully connected
 
+  auto fullyconnect_layer_cheat = [](const trk_feat_t curr_trk_feat_rm[num_emtf_features],
+                                     trk_invpt_t& curr_trk_invpt,
+                                     trk_phi_t& curr_trk_phi,
+                                     trk_eta_t& curr_trk_eta,
+                                     trk_d0_t& curr_trk_d0,
+                                     trk_z0_t& curr_trk_z0,
+                                     trk_beta_t& curr_trk_beta) -> void {
+    curr_trk_invpt.range() = trk_invpt_default_v3;
+    curr_trk_phi.range() = trk_phi_default_v3;
+    curr_trk_eta.range() = trk_eta_default_v3;
+    curr_trk_d0.range() = trk_d0_default_v3;
+    curr_trk_z0.range() = trk_z0_default_v3;
+    curr_trk_beta.range() = trk_beta_default_v3;
+  };
+
   for (unsigned itrk = 0; itrk < fullyconnect_config::n_in; itrk++) {
+    // Skip fullyconnect_layer if invalid
+    if (not trk_valid_rm[itrk]) {
+      fullyconnect_layer_cheat(
+          nullptr, trk_invpt[itrk], trk_phi[itrk], trk_eta[itrk], trk_d0[itrk], trk_z0[itrk], trk_beta[itrk]);
+      continue;
+    }
+
     // Intermediate arrays (for layer input)
     trk_feat_t curr_trk_feat_rm[num_emtf_features];
 
